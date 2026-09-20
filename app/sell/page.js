@@ -25,7 +25,8 @@ export default function SellPage() {
     } else {
       setProducts(data || [])
       if (data && data.length > 0) {
-        setSelectedProductId(data[0].id)
+        // บังคับแปลง id สินค้าตัวแรกเป็น String ทันที
+        setSelectedProductId(String(data[0].id))
       }
     }
   }
@@ -84,7 +85,8 @@ export default function SellPage() {
     setLoading(true)
     setMessage('')
 
-    const selectedProduct = products.find(p => p.id === parseInt(selectedProductId))
+    // แปลงฝั่ง selectedProductId และ p.id เป็น String ทั้งคู่ก่อนเปรียบเทียบ
+    const selectedProduct = products.find(p => String(p.id) === String(selectedProductId))
 
     if (!selectedProduct) {
       setMessage('❌ กรุณาเลือกสินค้า')
@@ -141,9 +143,15 @@ export default function SellPage() {
       <form onSubmit={handleSell} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
         <div>
           <label style={{ display: 'block', fontWeight: 'bold' }}>เลือกสินค้า:</label>
-          <select value={selectedProductId} onChange={(e) => setSelectedProductId(e.target.value)} style={{ width: '100%', padding: '10px' }}>
+          <select 
+            value={String(selectedProductId)} 
+            onChange={(e) => setSelectedProductId(String(e.target.value))} 
+            style={{ width: '100%', padding: '10px' }}
+          >
             {products.map((p) => (
-              <option key={p.id} value={p.id}>{p.name} - {p.price} บาท (เหลือ {p.stock} ชิ้น)</option>
+              <option key={p.id} value={String(p.id)}>
+                {p.name} - {p.price} บาท (เหลือ {p.stock} ชิ้น)
+              </option>
             ))}
           </select>
         </div>
