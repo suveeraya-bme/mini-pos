@@ -1,12 +1,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { createClient } from '@supabase/supabase-js'
-
-// ดึงค่า URL และ Key โดยตรงเพื่อตัดปัญหา Import File ไม่เจอ
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 export default function SellPage() {
   const [products, setProducts] = useState([])
@@ -15,21 +9,29 @@ export default function SellPage() {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
 
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
   useEffect(() => {
     fetchProducts()
   }, [])
 
   async function fetchProducts() {
-    const { data, error } = await supabase
-      .from('products')
-      .select('*')
-      .order('id', { ascending: true })
-
-    if (error) {
-      console.error('Error fetching products:', error)
-    } else if (data && data.length > 0) {
-      setProducts(data)
-      setSelectedProductId(String(data[0].id))
+    if (!supabaseUrl || !supabaseKey) return
+    try {
+      const res = await fetch(`${supabaseUrl}/rest/v1/products?select=*&order=id.asc`, {
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`
+        }
+      })
+      const data = await res.json()
+      if (Array.isArray(data) && data.length > 0) {
+        setProducts(data)
+        setSelectedProductId(String(data[0].id))
+      }
+    } catch (err) {
+      console.error('Fetch products error:', err)
     }
   }
 
@@ -109,19 +111,33 @@ export default function SellPage() {
     const newStock = selectedProduct.stock - quantity
 
     try {
-      const { error: salesError } = await supabase
-        .from('sales')
-        .insert([{ product_id: selectedProduct.id, quantity: parseInt(quantity), total_price: totalPrice }])
+      // 1. บันทึกการขาย
+      const salesRes = await fetch(`${supabaseUrl}/rest/v1/sales`, {
+        method: 'POST',
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ product_id: selectedProduct.id, quantity: parseInt(quantity), total_price: totalPrice })
+      })
 
-      if (salesError) throw salesError
+      if (!salesRes.ok) throw new Error('บันทึกการขายไม่สำเร็จ')
 
-      const { error: updateError } = await supabase
-        .from('products')
-        .update({ stock: newStock })
-        .eq('id', selectedProduct.id)
+      // 2. ตัดสต๊อกสินค้า
+      const updateRes = await fetch(`${supabaseUrl}/rest/v1/products?id=eq.${selectedProduct.id}`, {
+        method: 'PATCH',
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ stock: newStock })
+      })
 
-      if (updateError) throw updateError
+      if (!updateRes.ok) throw new Error('อัปเดตสต๊อกไม่สำเร็จ')
 
+      // 3. ส่งแจ้งเตือน Telegram
       sendTelegramNotification(selectedProduct, quantity, newStock, totalPrice)
 
       setMessage(`✅ ขายสำเร็จ! (${selectedProduct.name} x ${quantity})`)
@@ -178,4 +194,3 @@ export default function SellPage() {
       </form>
     </div>
   )
-}
