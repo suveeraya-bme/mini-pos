@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase } from '../../lib/supabaseClient'
+import { supabase } from '@/lib/supabaseClient'
 
 export default function SellPage() {
   const [products, setProducts] = useState([])
@@ -24,7 +24,7 @@ export default function SellPage() {
       console.error('Error fetching products:', error)
     } else if (data && data.length > 0) {
       setProducts(data)
-      // บังคับเลือกสินค้าชิ้นแรกทันทีเมื่อโหลดข้อมูลเสร็จ
+      // กำหนดค่าเริ่มต้นให้สินค้าตัวแรกทันที
       setSelectedProductId(String(data[0].id))
     }
   }
@@ -80,9 +80,9 @@ export default function SellPage() {
     setLoading(true)
     setMessage('')
 
-    // ค้นหาสินค้าจาก ID โดยหาตัวแรกทันทีถ้ายังไม่ได้เลือก
-    const targetId = selectedProductId || (products.length > 0 ? String(products[0].id) : '')
-    const selectedProduct = products.find(p => String(p.id) === String(targetId))
+    // ค้นหาสินค้า ป้องกันกรณี selectedProductId เป็นค่าว่าง ให้ดึงตัวแรกมาทันที
+    const activeId = selectedProductId || (products.length > 0 ? String(products[0].id) : '')
+    const selectedProduct = products.find(p => String(p.id) === String(activeId))
 
     if (!selectedProduct) {
       setMessage('❌ กรุณาเลือกสินค้า')
@@ -119,7 +119,6 @@ export default function SellPage() {
 
       if (updateError) throw updateError
 
-      // ส่งแจ้งเตือนเข้า Telegram
       sendTelegramNotification(selectedProduct, quantity, newStock, totalPrice)
 
       setMessage(`✅ ขายสำเร็จ! (${selectedProduct.name} x ${quantity})`)
