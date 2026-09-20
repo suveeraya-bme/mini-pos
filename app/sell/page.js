@@ -3,6 +3,46 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 
+// ===== เรียกแจ้งเตือนผ่าน API Route แทนการยิง Telegram ตรงจาก client =====
+async function sendTelegramMessage(text) {
+  try {
+    await fetch('/api/telegram-notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+  } catch (err) {
+    console.error('เรียก API แจ้งเตือน Telegram ไม่สำเร็จ:', err);
+  }
+}
+
+function buildOrderMessage({ productName, quantity, totalPrice, newStock }) {
+  const timeText = new Date().toLocaleString('th-TH', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+
+  return (
+    `🛍️ <b>มีรายการขายใหม่!</b>\n` +
+    `- สินค้า: ${productName}\n` +
+    `- จำนวน: ${quantity} ชิ้น\n` +
+    `- ราคารวม: ${totalPrice} บาท\n` +
+    `- สต๊อกคงเหลือปัจจุบัน: ${newStock} ชิ้น\n` +
+    `- เวลา: ${timeText}`
+  );
+}
+
+function buildLowStockMessage({ productName, newStock }) {
+  return (
+    `🚨 <b>[เตือนภัย] สต๊อกสินค้าใกล้หมด!</b>\n` +
+    `- สินค้า: ${productName}\n` +
+    `- คงเหลือเพียง: ${newStock} ชิ้น\n` +
+    `⚠️ กรุณาเติมสต๊อกสินค้าด่วน!`
+  );
+}
+
+const LOW_STOCK_THRESHOLD = 5;
+
 export default function SellPage() {
   const [products, setProducts] = useState([]);
   const [selectedId, setSelectedId] = useState('');
@@ -15,7 +55,6 @@ export default function SellPage() {
     fetchProducts();
   }, []);
 
-  // ดึงรายการสินค้าทั้งหมดมาใส่ dropdown
   async function fetchProducts() {
     setLoading(true);
     const { data, error } = await supabase
@@ -35,7 +74,6 @@ export default function SellPage() {
   const qtyNumber = parseInt(quantity) || 0;
   const totalPrice = selectedProduct ? selectedProduct.price * qtyNumber : 0;
 
-  // กดปุ่ม "ขาย"
   async function handleSell(e) {
     e.preventDefault();
     setMessage('');
@@ -49,7 +87,6 @@ export default function SellPage() {
       return;
     }
 
-    // ตรวจสอบ stock เพียงพอหรือไม่
     if (qtyNumber > selectedProduct.stock) {
       alert(`สินค้าคงเหลือไม่พอ (เหลือ ${selectedProduct.stock} ${selectedProduct.unit})`);
       return;
@@ -57,7 +94,6 @@ export default function SellPage() {
 
     setSubmitting(true);
 
-    // บันทึกรายการขายลงตาราง sales
     const { error: saleError } = await supabase.from('sales').insert([
       {
         product_id: selectedProduct.id,
@@ -73,7 +109,6 @@ export default function SellPage() {
       return;
     }
 
-    // อัปเดต stock ในตาราง products ให้ลดลง
     const newStock = selectedProduct.stock - qtyNumber;
     const { error: stockError } = await supabase
       .from('products')
@@ -86,7 +121,25 @@ export default function SellPage() {
       return;
     }
 
-    // สำเร็จ: แสดงข้อความ, รีเซ็ตฟอร์ม, โหลดข้อมูลใหม่
+    // ===== ตัดสต๊อกสำเร็จแล้ว: ยิงแจ้งเตือนผ่าน API Route =====
+    sendTelegramMessage(
+      buildOrderMessage({
+        productName: selectedProduct.name,
+        quantity: qtyNumber,
+        totalPrice: totalPrice,
+        newStock: newStock,
+      })
+    );
+
+    if (newStock <= LOW_STOCK_THRESHOLD) {
+      sendTelegramMessage(
+        buildLowStockMessage({
+          productName: selectedProduct.name,
+          newStock: newStock,
+        })
+      );
+    }
+
     setMessage(`ขายสำเร็จ! ${selectedProduct.name} x ${qtyNumber} รวม ${totalPrice} บาท`);
     setSelectedId('');
     setQuantity('');
@@ -109,7 +162,6 @@ export default function SellPage() {
       ) : (
         <div className="card">
           <form onSubmit={handleSell}>
-            {/* Dropdown เลือกสินค้า */}
             <div style={{ marginBottom: '12px' }}>
               <label>สินค้า: </label>
               <br />
@@ -127,7 +179,6 @@ export default function SellPage() {
               </select>
             </div>
 
-            {/* จำนวนที่จะขาย */}
             <div style={{ marginBottom: '12px' }}>
               <label>จำนวน: </label>
               <br />
@@ -140,7 +191,6 @@ export default function SellPage() {
               />
             </div>
 
-            {/* ยอดรวมอัตโนมัติ */}
             <div style={{ marginBottom: '16px', fontWeight: 'bold' }}>
               ยอดรวม: {totalPrice} บาท
             </div>
