@@ -1,196 +1,206 @@
-'use client'
+'use client';
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react';
+import { supabase } from '../../lib/supabaseClient';
+
+// ===== เรียกแจ้งเตือนผ่าน API Route แทนการยิง Telegram ตรงจาก client =====
+async function sendTelegramMessage(text) {
+  try {
+    await fetch('/api/telegram-notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+  } catch (err) {
+    console.error('เรียก API แจ้งเตือน Telegram ไม่สำเร็จ:', err);
+  }
+}
+
+function buildOrderMessage({ productName, quantity, totalPrice, newStock }) {
+  const timeText = new Date().toLocaleString('th-TH', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+
+  return (
+    `🛍️ <b>มีรายการขายใหม่!</b>\n` +
+    `- สินค้า: ${productName}\n` +
+    `- จำนวน: ${quantity} ชิ้น\n` +
+    `- ราคารวม: ${totalPrice} บาท\n` +
+    `- สต๊อกคงเหลือปัจจุบัน: ${newStock} ชิ้น\n` +
+    `- เวลา: ${timeText}`
+  );
+}
+
+function buildLowStockMessage({ productName, newStock }) {
+  return (
+    `🚨 <b>[เตือนภัย] สต๊อกสินค้าใกล้หมด!</b>\n` +
+    `- สินค้า: ${productName}\n` +
+    `- คงเหลือเพียง: ${newStock} ชิ้น\n` +
+    `⚠️ กรุณาเติมสต๊อกสินค้าด่วน!`
+  );
+}
+
+const LOW_STOCK_THRESHOLD = 5;
 
 export default function SellPage() {
-  const [products, setProducts] = useState([])
-  const [selectedProductId, setSelectedProductId] = useState('')
-  const [quantity, setQuantity] = useState(1)
-  const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState('')
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const [products, setProducts] = useState([]);
+  const [selectedId, setSelectedId] = useState('');
+  const [quantity, setQuantity] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState('');
 
   useEffect(() => {
-    fetchProducts()
-  }, [])
+    fetchProducts();
+  }, []);
 
   async function fetchProducts() {
-    if (!supabaseUrl || !supabaseKey) return
-    try {
-      const res = await fetch(`${supabaseUrl}/rest/v1/products?select=*&order=id.asc`, {
-        headers: {
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${supabaseKey}`
-        }
-      })
-      const data = await res.json()
-      if (Array.isArray(data) && data.length > 0) {
-        setProducts(data)
-        setSelectedProductId(String(data[0].id))
-      }
-    } catch (err) {
-      console.error('Fetch products error:', err)
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .order('name', { ascending: true });
+
+    if (error) {
+      console.error(error);
+    } else {
+      setProducts(data);
     }
+    setLoading(false);
   }
 
-  async function sendTelegramNotification(product, soldQuantity, remainingStock, totalPrice) {
-    const botToken = process.env.NEXT_PUBLIC_TELEGRAM_BOT_TOKEN
-    const chatId = process.env.NEXT_PUBLIC_TELEGRAM_CHAT_ID
-
-    if (!botToken || !chatId) return
-
-    const telegramApiUrl = `https://api.telegram.org/bot${botToken}/sendMessage`
-
-    try {
-      const orderMessage = `🛍️ <b>มีรายการขายใหม่!</b>\n` +
-        `- สินค้า: ${product.name}\n` +
-        `- จำนวน: ${soldQuantity} ชิ้น\n` +
-        `- ราคารวม: ${totalPrice.toLocaleString()} บาท\n` +
-        `- สต๊อกคงเหลือ: ${remainingStock} ชิ้น`
-
-      await fetch(telegramApiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text: orderMessage,
-          parse_mode: 'HTML'
-        })
-      })
-
-      if (remainingStock <= 5) {
-        const lowStockMessage = `🚨 <b>[เตือนภัย] สต๊อกสินค้าใกล้หมด!</b>\n` +
-          `- สินค้า: ${product.name}\n` +
-          `- คงเหลือเพียง: ${remainingStock} ชิ้น\n` +
-          `⚠️ กรุณาเติมสต๊อกสินค้าด่วน!`
-
-        await fetch(telegramApiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text: lowStockMessage,
-            parse_mode: 'HTML'
-          })
-        })
-      }
-    } catch (err) {
-      console.error('Telegram Error:', err)
-    }
-  }
+  const selectedProduct = products.find((p) => p.id === selectedId);
+  const qtyNumber = parseInt(quantity) || 0;
+  const totalPrice = selectedProduct ? selectedProduct.price * qtyNumber : 0;
 
   async function handleSell(e) {
-    e.preventDefault()
-    setLoading(true)
-    setMessage('')
-
-    const activeId = selectedProductId || (products.length > 0 ? String(products[0].id) : '')
-    const selectedProduct = products.find(p => String(p.id) === String(activeId))
+    e.preventDefault();
+    setMessage('');
 
     if (!selectedProduct) {
-      setMessage('❌ กรุณาเลือกสินค้า')
-      setLoading(false)
-      return
+      alert('กรุณาเลือกสินค้า');
+      return;
+    }
+    if (qtyNumber <= 0) {
+      alert('กรุณากรอกจำนวนให้ถูกต้อง');
+      return;
     }
 
-    if (quantity <= 0) {
-      setMessage('❌ จำนวนต้องมากกว่า 0')
-      setLoading(false)
-      return
+    if (qtyNumber > selectedProduct.stock) {
+      alert(`สินค้าคงเหลือไม่พอ (เหลือ ${selectedProduct.stock} ${selectedProduct.unit})`);
+      return;
     }
 
-    if (selectedProduct.stock < quantity) {
-      setMessage(`❌ สต๊อกไม่พอ (คงเหลือ ${selectedProduct.stock} ชิ้น)`)
-      setLoading(false)
-      return
+    setSubmitting(true);
+
+    const { error: saleError } = await supabase.from('sales').insert([
+      {
+        product_id: selectedProduct.id,
+        product_name: selectedProduct.name,
+        quantity: qtyNumber,
+        total_price: totalPrice,
+      },
+    ]);
+
+    if (saleError) {
+      alert('บันทึกการขายไม่สำเร็จ: ' + saleError.message);
+      setSubmitting(false);
+      return;
     }
 
-    const totalPrice = selectedProduct.price * quantity
-    const newStock = selectedProduct.stock - quantity
+    const newStock = selectedProduct.stock - qtyNumber;
+    const { error: stockError } = await supabase
+      .from('products')
+      .update({ stock: newStock })
+      .eq('id', selectedProduct.id);
 
-    try {
-      // 1. บันทึกการขาย
-      const salesRes = await fetch(`${supabaseUrl}/rest/v1/sales`, {
-        method: 'POST',
-        headers: {
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${supabaseKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ product_id: selectedProduct.id, quantity: parseInt(quantity), total_price: totalPrice })
+    if (stockError) {
+      alert('อัปเดตสต๊อกไม่สำเร็จ: ' + stockError.message);
+      setSubmitting(false);
+      return;
+    }
+
+    // ===== ตัดสต๊อกสำเร็จแล้ว: ยิงแจ้งเตือนผ่าน API Route =====
+    sendTelegramMessage(
+      buildOrderMessage({
+        productName: selectedProduct.name,
+        quantity: qtyNumber,
+        totalPrice: totalPrice,
+        newStock: newStock,
       })
+    );
 
-      if (!salesRes.ok) throw new Error('บันทึกการขายไม่สำเร็จ')
-
-      // 2. ตัดสต๊อกสินค้า
-      const updateRes = await fetch(`${supabaseUrl}/rest/v1/products?id=eq.${selectedProduct.id}`, {
-        method: 'PATCH',
-        headers: {
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${supabaseKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ stock: newStock })
-      })
-
-      if (!updateRes.ok) throw new Error('อัปเดตสต๊อกไม่สำเร็จ')
-
-      // 3. ส่งแจ้งเตือน Telegram
-      sendTelegramNotification(selectedProduct, quantity, newStock, totalPrice)
-
-      setMessage(`✅ ขายสำเร็จ! (${selectedProduct.name} x ${quantity})`)
-      setQuantity(1)
-      fetchProducts()
-    } catch (error) {
-      console.error('Error processing sale:', error)
-      setMessage(`❌ เกิดข้อผิดพลาด: ${error.message}`)
-    } finally {
-      setLoading(false)
+    if (newStock <= LOW_STOCK_THRESHOLD) {
+      sendTelegramMessage(
+        buildLowStockMessage({
+          productName: selectedProduct.name,
+          newStock: newStock,
+        })
+      );
     }
+
+    setMessage(`ขายสำเร็จ! ${selectedProduct.name} x ${qtyNumber} รวม ${totalPrice} บาท`);
+    setSelectedId('');
+    setQuantity('');
+    setSubmitting(false);
+    fetchProducts();
   }
 
   return (
-    <div style={{ maxWidth: '500px', margin: '40px auto', padding: '20px', fontFamily: 'sans-serif' }}>
-      <h1>🛒 หน้าขายสินค้า (Mini POS)</h1>
+    <div>
+      <h1>ขายสินค้า</h1>
+
       {message && (
-        <div style={{ padding: '10px', marginBottom: '20px', borderRadius: '5px', backgroundColor: message.startsWith('✅') ? '#e6fffa' : '#ffebe9' }}>
+        <div className="card" style={{ background: '#e6f4ea', color: '#1e5e2f' }}>
           {message}
         </div>
       )}
-      <form onSubmit={handleSell} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-        <div>
-          <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px' }}>เลือกสินค้า:</label>
-          <select 
-            value={selectedProductId} 
-            onChange={(e) => setSelectedProductId(e.target.value)} 
-            style={{ width: '100%', padding: '10px', fontSize: '16px' }}
-          >
-            {products.map((p) => (
-              <option key={p.id} value={String(p.id)}>
-                {p.name} - {p.price} บาท (เหลือ {p.stock} ชิ้น)
-              </option>
-            ))}
-          </select>
+
+      {loading ? (
+        <p>กำลังโหลด...</p>
+      ) : (
+        <div className="card">
+          <form onSubmit={handleSell}>
+            <div style={{ marginBottom: '12px' }}>
+              <label>สินค้า: </label>
+              <br />
+              <select
+                value={selectedId}
+                onChange={(e) => setSelectedId(e.target.value)}
+                style={{ width: '100%', marginTop: '4px' }}
+              >
+                <option value="">-- เลือกสินค้า --</option>
+                {products.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} — {p.price} บาท (เหลือ {p.stock} {p.unit})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ marginBottom: '12px' }}>
+              <label>จำนวน: </label>
+              <br />
+              <input
+                type="number"
+                min="1"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+                style={{ width: '100%', marginTop: '4px' }}
+              />
+            </div>
+
+            <div style={{ marginBottom: '16px', fontWeight: 'bold' }}>
+              ยอดรวม: {totalPrice} บาท
+            </div>
+
+            <button type="submit" disabled={submitting}>
+              {submitting ? 'กำลังบันทึก...' : 'ขาย'}
+            </button>
+          </form>
         </div>
-        <div>
-          <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px' }}>จำนวนที่ขาย:</label>
-          <input 
-            type="number" 
-            min="1" 
-            value={quantity} 
-            onChange={(e) => setQuantity(e.target.value)} 
-            style={{ width: '100%', padding: '10px', fontSize: '16px' }} 
-          />
-        </div>
-        <button 
-          type="submit" 
-          disabled={loading || products.length === 0} 
-          style={{ padding: '12px', backgroundColor: '#0070f3', color: '#fff', border: 'none', borderRadius: '5px', fontSize: '16px', cursor: 'pointer' }}
-        >
-          {loading ? 'กำลังบันทึก...' : 'บันทึกการขาย'}
-        </button>
-      </form>
+      )}
     </div>
-  )
+  );
+}
