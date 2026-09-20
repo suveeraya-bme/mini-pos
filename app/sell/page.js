@@ -1,7 +1,12 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabaseClient'
+import { createClient } from '@supabase/supabase-js'
+
+// ดึงค่า URL และ Key โดยตรงเพื่อตัดปัญหา Import File ไม่เจอ
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 export default function SellPage() {
   const [products, setProducts] = useState([])
@@ -24,7 +29,6 @@ export default function SellPage() {
       console.error('Error fetching products:', error)
     } else if (data && data.length > 0) {
       setProducts(data)
-      // กำหนดค่าเริ่มต้นให้สินค้าตัวแรกทันที
       setSelectedProductId(String(data[0].id))
     }
   }
@@ -80,7 +84,6 @@ export default function SellPage() {
     setLoading(true)
     setMessage('')
 
-    // ค้นหาสินค้า ป้องกันกรณี selectedProductId เป็นค่าว่าง ให้ดึงตัวแรกมาทันที
     const activeId = selectedProductId || (products.length > 0 ? String(products[0].id) : '')
     const selectedProduct = products.find(p => String(p.id) === String(activeId))
 
