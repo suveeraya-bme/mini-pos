@@ -22,12 +22,10 @@ export default function SellPage() {
 
     if (error) {
       console.error('Error fetching products:', error)
-    } else {
-      setProducts(data || [])
-      if (data && data.length > 0) {
-        // บังคับแปลง id สินค้าตัวแรกเป็น String ทันที
-        setSelectedProductId(String(data[0].id))
-      }
+    } else if (data && data.length > 0) {
+      setProducts(data)
+      // บังคับเลือกสินค้าชิ้นแรกทันทีเมื่อโหลดข้อมูลเสร็จ
+      setSelectedProductId(String(data[0].id))
     }
   }
 
@@ -35,10 +33,7 @@ export default function SellPage() {
     const botToken = process.env.NEXT_PUBLIC_TELEGRAM_BOT_TOKEN
     const chatId = process.env.NEXT_PUBLIC_TELEGRAM_CHAT_ID
 
-    if (!botToken || !chatId) {
-      console.warn('ยังไม่ได้ตั้งค่า Bot Token หรือ Chat ID')
-      return
-    }
+    if (!botToken || !chatId) return
 
     const telegramApiUrl = `https://api.telegram.org/bot${botToken}/sendMessage`
 
@@ -76,7 +71,7 @@ export default function SellPage() {
         })
       }
     } catch (err) {
-      console.error('Failed to send Telegram notification:', err)
+      console.error('Telegram Error:', err)
     }
   }
 
@@ -85,8 +80,9 @@ export default function SellPage() {
     setLoading(true)
     setMessage('')
 
-    // แปลงฝั่ง selectedProductId และ p.id เป็น String ทั้งคู่ก่อนเปรียบเทียบ
-    const selectedProduct = products.find(p => String(p.id) === String(selectedProductId))
+    // ค้นหาสินค้าจาก ID โดยหาตัวแรกทันทีถ้ายังไม่ได้เลือก
+    const targetId = selectedProductId || (products.length > 0 ? String(products[0].id) : '')
+    const selectedProduct = products.find(p => String(p.id) === String(targetId))
 
     if (!selectedProduct) {
       setMessage('❌ กรุณาเลือกสินค้า')
@@ -123,7 +119,8 @@ export default function SellPage() {
 
       if (updateError) throw updateError
 
-      await sendTelegramNotification(selectedProduct, quantity, newStock, totalPrice)
+      // ส่งแจ้งเตือนเข้า Telegram
+      sendTelegramNotification(selectedProduct, quantity, newStock, totalPrice)
 
       setMessage(`✅ ขายสำเร็จ! (${selectedProduct.name} x ${quantity})`)
       setQuantity(1)
@@ -139,14 +136,18 @@ export default function SellPage() {
   return (
     <div style={{ maxWidth: '500px', margin: '40px auto', padding: '20px', fontFamily: 'sans-serif' }}>
       <h1>🛒 หน้าขายสินค้า (Mini POS)</h1>
-      {message && <div style={{ padding: '10px', marginBottom: '20px', borderRadius: '5px', backgroundColor: message.startsWith('✅') ? '#e6fffa' : '#ffebe9' }}>{message}</div>}
+      {message && (
+        <div style={{ padding: '10px', marginBottom: '20px', borderRadius: '5px', backgroundColor: message.startsWith('✅') ? '#e6fffa' : '#ffebe9' }}>
+          {message}
+        </div>
+      )}
       <form onSubmit={handleSell} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
         <div>
-          <label style={{ display: 'block', fontWeight: 'bold' }}>เลือกสินค้า:</label>
+          <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px' }}>เลือกสินค้า:</label>
           <select 
-            value={String(selectedProductId)} 
-            onChange={(e) => setSelectedProductId(String(e.target.value))} 
-            style={{ width: '100%', padding: '10px' }}
+            value={selectedProductId} 
+            onChange={(e) => setSelectedProductId(e.target.value)} 
+            style={{ width: '100%', padding: '10px', fontSize: '16px' }}
           >
             {products.map((p) => (
               <option key={p.id} value={String(p.id)}>
@@ -156,10 +157,20 @@ export default function SellPage() {
           </select>
         </div>
         <div>
-          <label style={{ display: 'block', fontWeight: 'bold' }}>จำนวนที่ขาย:</label>
-          <input type="number" min="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} style={{ width: '100%', padding: '10px' }} />
+          <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px' }}>จำนวนที่ขาย:</label>
+          <input 
+            type="number" 
+            min="1" 
+            value={quantity} 
+            onChange={(e) => setQuantity(e.target.value)} 
+            style={{ width: '100%', padding: '10px', fontSize: '16px' }} 
+          />
         </div>
-        <button type="submit" disabled={loading} style={{ padding: '12px', backgroundColor: '#0070f3', color: '#fff', border: 'none', borderRadius: '5px' }}>
+        <button 
+          type="submit" 
+          disabled={loading || products.length === 0} 
+          style={{ padding: '12px', backgroundColor: '#0070f3', color: '#fff', border: 'none', borderRadius: '5px', fontSize: '16px', cursor: 'pointer' }}
+        >
           {loading ? 'กำลังบันทึก...' : 'บันทึกการขาย'}
         </button>
       </form>
