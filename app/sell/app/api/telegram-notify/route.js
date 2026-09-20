@@ -1,6 +1,3 @@
-// API Route: รับ request จากฝั่ง client แล้วยิงต่อไปยัง Telegram API
-// Token อยู่ฝั่ง server เท่านั้น ไม่มี NEXT_PUBLIC_ นำหน้า จึงไม่ถูกส่งไปที่ browser
-
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
@@ -30,7 +27,6 @@ export async function POST(request) {
     return Response.json({ ok: true, telegram: data });
   } catch (err) {
     console.error('Telegram notify route error:', err);
-    // ตอบ 200 กลับไปเสมอ เพื่อไม่ให้ฝั่ง client ต้องจัดการ error หนักเกินไป
     return Response.json({ ok: false, error: String(err) }, { status: 200 });
   }
 }
