@@ -11,7 +11,6 @@ export default function HistoryPage() {
     fetchSales();
   }, []);
 
-  // ดึงประวัติการขายทั้งหมด เรียงจากล่าสุดไปเก่าสุด
   async function fetchSales() {
     setLoading(true);
     const { data, error } = await supabase
@@ -27,10 +26,8 @@ export default function HistoryPage() {
     setLoading(false);
   }
 
-  // รวมยอดขายทั้งหมด
   const totalSum = sales.reduce((sum, s) => sum + Number(s.total_price), 0);
 
-  // แปลงวันเวลาให้อ่านง่าย
   function formatDateTime(isoString) {
     const date = new Date(isoString);
     return date.toLocaleString('th-TH', {
@@ -43,7 +40,6 @@ export default function HistoryPage() {
     <div>
       <h1>ประวัติการขาย</h1>
 
-      {/* ยอดขายรวมทั้งหมด */}
       <div className="card" style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>
         ยอดขายรวมทั้งหมด: {totalSum.toLocaleString()} บาท
       </div>
